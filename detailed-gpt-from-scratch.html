@@ -498,59 +498,61 @@ $$PE_{(pos, 2i + 1)} = cos(pos/10000^{2i/d_{model}})$$
             To make this simple, let's just see this with an example. Let's say our Input contains the tokens in the array: ["France", "is", "a", "country", "in", "Europe"] and let's say our dimension for both the token embeddings and the positional encodings is 4. So here, is the final matrix corresponding the positional encoding.
         </p>
 
-        <table class="pe-table">
-            <tr>
-                <th></th>
-                <th>
-                    i = 0<br>2i = 0<br>0 (2i)
-                </th>
-                <th>i = 0<br>2i = 0<br>1 (2i + 1)</th>
-                <th>i = 1<br>2i = 2<br>2 (2i)</th>
-                <th>i = 1<br>2i = 2<br>3 (2i + 1 )</th>
-            </tr>
-            <tr>
-                <td>France (pos = 0)</td>
-                <td>$$sin(0/10000^{(0/8)})$$</td>
-                <td>$$cos(0/10000^{(0/8)})$$</td>
-                <td>$$sin(0/10000^{(2/8)})$$</td>
-                <td>$$cos(0/10000^{(2/8)})$$</td>
-            </tr>
-            <tr>
-                <td>is (pos = 1)</td>
-                <td>$$sin(1/10000^{(0/8)})$$</td>
-                <td>$$cos(1/10000^{(0/8)})$$</td>
-                <td>$$sin(1/10000^{(2/8)})$$</td>
-                <td>$$cos(1/10000^{(2/8)})$$</td>
-            </tr>
-            <tr>
-                <td>a (pos = 2)</td>
-                <td>$$sin(2/10000^{(0/8)})$$</td>
-                <td>$$cos(2/10000^{(0/8)})$$</td>
-                <td>$$sin(2/10000^{(2/8)})$$</td>
-                <td>$$cos(2/10000^{(2/8)})$$</td>
-            </tr>
-            <tr>
-                <td>country (pos = 3)</td>
-                <td>$$sin(3/10000^{(0/8)})$$</td>
-                <td>$$cos(3/10000^{(0/8)})$$</td>
-                <td>$$sin(3/10000^{(2/8)})$$</td>
-                <td>$$cos(3/10000^{(2/8)})$$</td>
-            </tr>
-            <tr>
-                <td>in (pos = 4)</td>
-                <td>$$sin(4/10000^{(0/8)})$$</td>
-                <td>$$cos(4/10000^{(0/8)})$$</td>
-                <td>$$sin(4/10000^{(2/8)})$$</td>
-                <td>$$cos(4/10000^{(2/8)})$$</td>
-            </tr>
-            <tr>
-                <td>Europe (pos = 5)</td>
-                <td>$$sin(5/10000^{(0/8)})$$</td>
-                <td>$$cos(5/10000^{(0/8)})$$</td>
-                <td>$$sin(5/10000^{(2/8)})$$</td>
-                <td>$$cos(5/10000^{(2/8)})$$</td>
-            </tr>
-        </table>
+        <div class="table-wrapper">
+            <table class="pe-table">
+                <tr>
+                    <th></th>
+                    <th>
+                        i = 0<br>2i = 0<br>0 (2i)
+                    </th>
+                    <th>i = 0<br>2i = 0<br>1 (2i + 1)</th>
+                    <th>i = 1<br>2i = 2<br>2 (2i)</th>
+                    <th>i = 1<br>2i = 2<br>3 (2i + 1 )</th>
+                </tr>
+                <tr>
+                    <td>France (pos = 0)</td>
+                    <td>$$sin(0/10000^{(0/8)})$$</td>
+                    <td>$$cos(0/10000^{(0/8)})$$</td>
+                    <td>$$sin(0/10000^{(2/8)})$$</td>
+                    <td>$$cos(0/10000^{(2/8)})$$</td>
+                </tr>
+                <tr>
+                    <td>is (pos = 1)</td>
+                    <td>$$sin(1/10000^{(0/8)})$$</td>
+                    <td>$$cos(1/10000^{(0/8)})$$</td>
+                    <td>$$sin(1/10000^{(2/8)})$$</td>
+                    <td>$$cos(1/10000^{(2/8)})$$</td>
+                </tr>
+                <tr>
+                    <td>a (pos = 2)</td>
+                    <td>$$sin(2/10000^{(0/8)})$$</td>
+                    <td>$$cos(2/10000^{(0/8)})$$</td>
+                    <td>$$sin(2/10000^{(2/8)})$$</td>
+                    <td>$$cos(2/10000^{(2/8)})$$</td>
+                </tr>
+                <tr>
+                    <td>country (pos = 3)</td>
+                    <td>$$sin(3/10000^{(0/8)})$$</td>
+                    <td>$$cos(3/10000^{(0/8)})$$</td>
+                    <td>$$sin(3/10000^{(2/8)})$$</td>
+                    <td>$$cos(3/10000^{(2/8)})$$</td>
+                </tr>
+                <tr>
+                    <td>in (pos = 4)</td>
+                    <td>$$sin(4/10000^{(0/8)})$$</td>
+                    <td>$$cos(4/10000^{(0/8)})$$</td>
+                    <td>$$sin(4/10000^{(2/8)})$$</td>
+                    <td>$$cos(4/10000^{(2/8)})$$</td>
+                </tr>
+                <tr>
+                    <td>Europe (pos = 5)</td>
+                    <td>$$sin(5/10000^{(0/8)})$$</td>
+                    <td>$$cos(5/10000^{(0/8)})$$</td>
+                    <td>$$sin(5/10000^{(2/8)})$$</td>
+                    <td>$$cos(5/10000^{(2/8)})$$</td>
+                </tr>
+            </table>
+        </div>
         <p>
 Language models used to be based on recurrent neural networks in the past where recurrence was the main part of how sequence to sequence models were handled. Outputs used to be part of the next hidden layers and that made parallelization very difficult. *The transformers architecture relies on attention mechanism to attend to the contextual meaning of the different parts of a sentence.* So the need for positional information is important. That is why the positional encoding is part of the input of the encoder and decoder in the transformer architecture.
         </p>

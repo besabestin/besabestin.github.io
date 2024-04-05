@@ -12,6 +12,12 @@ body {
   padding-right: 10px;
 }
 
+div.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
 .pe-table {
   border-collapse: collapse;
 }
