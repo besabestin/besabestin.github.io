@@ -4,22 +4,1008 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Webpage</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Reddit+Mono:wght@200..900&display=swap" rel="stylesheet">
     <!-- Linking to an external CSS file -->
     <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/default.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css">
 </head>
 <body>
     <!-- Your content goes here -->
+    <div class="main-content">
+        <h1>Building GPT from scratch in extended details</h1>
+        <p>
+            Sometimes very detailed descriptions are important, specially if you come from a software engineering background like me. This document is also for myself - to keep track of all that I learned in my journey to understand how the current groundbreaking language models are built. The weird thing about this note here is that, the introduction (or what should have been an introduction) comes later in the document. This is because I want whoever stumbles here can just directly start doing. I ll be using PyTorch and I hope you have already installed and ready to go.
+        </p>
+        <pre>
+            <code class="language-python">
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import os
+
+device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
+            </code>
+        </pre>
+        <p>
+            You need to import the above libraries to follow this tutorial. Now, the first question one needs to deal with is what are the inputs and what are the outputs. Like any system, we need to model our inputs and our outputs. In this case our input is a bunch of text. a corpus of text that is collected from such sources as books, the internet etc. That is what we are going to train our system on.
+        </p>
+        <p>
+            *better yet, what one needs to ask first is - what are we going to do? what are language models about?*
+
+please download the file from this repo and ...
+
+computers can work better with numbers than words. 
+        </p>
+        <p>
+            Current semi-supervised language models are built in a way to estimate the next continuing token in a sequence of tokens. If you have a sentence that starts with "France is a country in" and your dictionary consists of the words ["Asia", "Cat", "Europe", "Water"] it is highly likely that the continuing word is "Europe". We can take a large text data extracted from combinations of news articles, books and blogs and count the number of instances of where France is mentioned as a country in Europe. 
+        </p>
+        <p>
+            Simply speaking, language models calculate the probability for each word in a dictionary as a way to continue the given prompt. After the word "he" it is most likely that "is" is going to follow. Similarly through a larger abstraction neural networks based language models learn more detailed patterns inside sentence and paragraph structures. 
+        </p>
+        <p>
+            The first step is then to create a dictionary. It is easy to represent words with numbers - So, we assign index to every word in the dictionary based on the alphabetical order they appear in. Considering the above simple example,
+
+Asia: 0
+Cat: 1
+Europe: 2
+Water: 3
+        </p>
+        <p>
+            Now that we agree that we have to represent the words in numbers, we also have to realize that we need the reverse process of changing the numbers back to words. This is specially the case whenever we want to show for the user the generated words by the language model. So, in the above case 0 would map to "Asia" and 1:Cat, 2:Europe, 3:Water.
+        </p>
+        <pre>
+            <code class="language-python">
+#consider vocab here contains all unique words in our corpus
+word2idx = {} #this would contain all mappings from token to number
+for idx, word in enumerate(sorted(list(vocab))):
+    word2idx[word] = idx
+
+# we also need to create the reverse variable
+idx2word = {} #this contains all mappings from number to token
+for word in vocab:
+    idx2word[word2idx[word]] = word
+            </code>
+        </pre>
+        <p>
+            Given that we are using python, we can use generators to actually make the above code shorter. Just as an example the first loop in the above snippet can be reduced to:
+        </p>
+        <pre>
+            <code class="language-python">
+word2idx = {word: idx for idx, word enumerate(sorted(list(vocab)))}
+            </code>
+        </pre>
+
+        <p>
+            Additionally, we would need two functions that make our tasks easier. Whenever we have a list of words (like a reply to a prompt) represented as numbers we would wish to convert all of them at once to actual words. In that case we would need a function called `decode`. Similarly, we would also need an `encode` function that does the reverse.
+        </p>
+
+        <p>
+            Now we have the concept of everything related to creating the dictionary, encoding and decoding tokens - let's wrap everything into a `Dictionary` class.
+        </p>
+        <pre>
+            <code class="language-python">
+class Dictionary(object):
+  def __init__(self):
+    self.word2idx = {}
+    self.idx2word = {}
+    self.vocab = {}
+
+  def create_dictionary(self, full_text):
+    self.vocab = set(full_text)
+    self.word2idx = {word: idx for idx, word in enumerate(sorted(list(vocab)))}
+    self.idx2word = {self.word2idx[word]: word for word in self.vocab}
+
+  def encode(self, tokens):
+    return [self.word2idx[token] for tokens]
+
+  def decode(self, idcs):
+    return [self.idx2word[idx] for idx in idcs]
+            </code>
+        </pre>
+
+        <p>
+            Next, we need to prepare the inputs and the outputs to the language model. Knowing what our inputs and outputs are makes the task easier. The problem with most machine learning related papers is that such important details are left out in the paper details. The same was also for the "Attention is all you need" paper - that one can't easily figure out what inputs and outputs to the model are.
+        </p>
+
+Here the steps
+
+        <h3>
+            read the text and create dictionary and sample space out of it
+        </h3>
+        <p>
+            Since our dataset is lyrics collected from several songs, we will read line by line and mark the end of each line with a special token `<eol>`. We would also split the words in each line using space as delimiter. This would be our simple tokenization technique. Mainstream language models use more advanced tokenization techniques. Openai for instance uses tiktoken for creating the tokens. Each token in that case is considered to be 0.75 times an English word. Given that openai's language models have to support different kinds of languages and also other text like programming languages, it makes sense to make the dictionary other than mere English words.
+        </p>
+
+This is our simple step in the process of tokenization:
+
+        <pre>
+            <code class="language-python">
+dictionary = Dictionary()
+with open(path, 'r') as f:
+  for line in f:
+    words = line.split() + ['<eol>']
+dictionary.create_vocab(words)
+            </code>
+        </pre>
+
+        <h3>
+            ##### break the text into overlapping (but not same) blocks of length context_size
+        </h3>
+        <p>
+            *what was the meaning, definition and the-why of context_size???*
+            Once we have a large corpus of text (in this case the whole lyric text), we need to create our mapping of input to output by breaking the text to many blocks each with length of `context_size`. This `context_size` is mostly arbitrary. But also sets a limit on what length of prompt our language model is capable of accepting at the end.
+        </p>
+
+        <p>
+            Let's say our `context_size` is 8, all our tokens in our dictionary are English words and our entire corpus contains only the following text - this awesome quote from Carl Sagan.
+        </p>
+
+<blockquote>
+The Earth is a very small stage in a vast cosmic arena. Think of the rivers of blood spilled by all those generals and emperors so that, in glory and triumph, they could become the momentary masters of a fraction of a dot. Think of the endless cruelties visited by the inhabitants of one corner of this pixel on the scarcely distinguishable inhabitants of some other corner, how frequent their misunderstandings, how eager they are to kill one another, how fervent their hatreds.
+</blockquote>
+
+When we set our inputs and outputs, these are some of the mappings.
+
+| **Inputs** | **Outputs** |
+| ---- | ---- |
+| \['The', 'Earth', 'is', 'a', 'very', 'small', 'stage', 'in'\] | \['Earth', 'is', 'a', 'very', 'small', 'stage', 'in', 'a'\] |
+| \['Earth', 'is', 'a', 'very', 'small', 'stage', 'in', 'a'\] | \['is', 'a', 'very', 'small', 'stage', 'in', 'a', 'vast'\] |
+| \['is', 'a', 'very', 'small', 'stage', 'in', 'a', 'vast'\] | \['a', 'very', 'small', 'stage', 'in', 'a', 'vast', 'cosmic'\] |
+| \['a', 'very', 'small', 'stage', 'in', 'a', 'vast', 'cosmic'\] | \['very', 'small', 'stage', 'in', 'a', 'vast', 'cosmic', 'arena.'\] |
+Having broken the text like that, these are the few things that we need to apply on that.
+1. We make use of the function `encode` we created before to change the strings into numbers.
+2. We wrap them all in PyTorch's `tensor` datastructure and we stack all rows together.
+
+        <pre>
+            <code class="language-python">
+context_length = 8
+input_rows = []
+for i in range(len(words) - context_length - 1):
+  input_rows.append(torch.tensor(dictionary.encode(words[i:i+context_length]), dtype=torch.long))
+
+inputs = torch.stack(input_rows)
+            </code>
+        </pre>
+
+        <p>
+The above creates the whole inputs tensor which would have a shape of `(n, context_length)`. To create the respective outputs we only shift our loops by 1 to the right. The above lines can also be squeezed into a single line.
+        </p>
+
+        <pre>
+            <code class="language-python">
+inputs = torch.stack([torch.tensor(dictionary.encode(words[i:i+context_length]), dtype=torch.long) for i in range(len(words) - context_length - 1)])
+outputs = torch.stack([torch.tensor(dictionary.encode(words[i:i+context_length]), dtype=torch.long) for i in range(1, len(words) - context_length)])
+            </code>
+        </pre>
+
+        <p>
+If we let our language model learn directly on the arrangement of the data, we may not have as good distribution as we would wish. For that reason, it is a good idea to shuffle. Before we do that let's do a little refresher on tensors. *additional reason to shuffle is so that the distribution in the test set can be the same as the distribution in the training set - otherwise we would have a problem of overfitting in the training set.*
+        </p>
+
+        <pre>
+            <code class="language-python">
+# let's create a tensor of size 5x3
+x = torch.arange(5*3).view(5,3)
+#
+# outputing x would give the following output
+#
+# tensor([[ 0,  1,  2],
+#        [ 3,  4,  5],
+#        [ 6,  7,  8],
+#        [ 9, 10, 11],
+#        [12, 13, 14]])
+# 
+# Let's say we want to select the above tensor in different orders of the rows.
+# consider you want to select the 4th row first then respectively the 3rd, 5th, 1st and 2nd, then we simply do:
+# 
+y = torch.tensor([3,2,4,0,1])
+x_shuffled = x[y]
+# now printing x_shuffled would output the following
+#
+# tensor([[ 9, 10, 11],
+#        [ 6,  7,  8],
+#        [12, 13, 14],
+#        [ 0,  1,  2],
+#        [ 3,  4,  5]])
+# 
+# TODO:::::::::::::: WHAT ABOUT IF YOU JUST WANT TO HAVE THE ROWS ORDERED RANDOMLY
+            </code>
+        </pre>
+
+        <p>
+So, to shuffle our inputs and outputs in the same way, we need to create a list of indices that are shuffled. Additionally we need to split our dataset for training and test set.
+        </p>
+
+        <p>
+It is mostly a common practice to split dataset into three sets. Training set, validation set and test set. The training set would be used for training a model, the validation for tuning the hyperparameters (one hyperparameter that you have come across so far is context_length), and the test set for evaluating the system properly with unseen data.
+        </p>
+
+        <p>
+In our case we would only split the data into 80% for training and 20% for testing. The following lines demonstrate what we so far talked about:
+        </p>
+
+        <pre>
+            <code class="language-python">
+_perm = torch.randperm(inputs.shape[0])
+train_split = int(0.8 * inputs.shape[0])
+
+train_data = {
+  'X': inputs[_perm][:train_split, :],
+  'y': outputs[_perm][:train_split, :]
+}
+test_data = {
+  'X': inputs[_perm][train_split:, :],
+  'y': outputs[_perm][train_split:, :]
+}
+            </code>
+        </pre>
+
+        <p>
+If you train a language model, your data would mostly be very very vast. Mostly when training machine learning models, it is advantageous to do the training in smaller chunks that can be averaged out together. This is what it means to train your model in batches. You train your model in several iterations of batches so that it can iteratively arrive to the parameters that lower final cost.
+        </p>
+
+        <p>
+To achieve that we have to specify a `batch_size` and create a function that returns for us just a batch of data that our model can train on. Additionally it would be better if the data is always shuffled to enforce more randomness in picking the training set. We have a very simple function called `get_batch` to handle that. Bringing that function and all the other concepts we recently talked about, let's create a class called `Corpus`. The whole implementation looks like the following.
+        </p>
+
+        <pre>
+            <code class="language-python">
+class Corpus(object):
+  def __init__(self, path, batch_size=32, context_length=32) -> None:
+    self.dictionary = Dictionary()
+    self.words = []
+    self.batch_size = batch_size
+    self.context_length = context_length
+    self.train_data = {}
+    self.test_data = {}
+    self.tokenize(path)
+    self.prepare(self.words)
+
+  def tokenize(self, path):
+    assert os.path.exists(path)
+    with open(path, 'r') as f:
+      for line in f:
+        words = line.split() + ['<eol>']
+        self.words.extend(words)
+    self.dictionary.create_vocab(self.words)
+
+  def prepare(self, words):
+    inputs = torch.stack([torch.tensor(self.dictionary.encode(words[i:i+self.context_size]), dtype=torch.long) for i in range(len(words) - self.context_size - 1)])
+    outputs = torch.stack([torch.tensor(self.dictionary.encode(words[i:i+self.context_size]), dtype=torch.long) for i in range(1,len(words) - self.context_size)])
+    _perm = torch.randperm(inputs.shape[0])
+    train_split = int(0.8 * inputs.shape[0])
+    self.train_data = {
+      'X': inputs[_perm][:train_split, :],
+      'y': outputs[_perm][:train_split, :]
+    }
+    self.test_data = {
+      'X': inputs[_perm][train_split:, :],
+      'y': outputs[_perm][train_split:, :]
+    }
+
+  def get_batch(self, _stage):
+    dataset = self.train_data if _stage == 'train' else self.val_data
+    _perm = torch.randperm(dataset['X'].shape[0])
+    return dataset['X'][_perm][:self.batch_size, :].to(device), dataset['y'][_perm][:self.batch_size, :].to(device)
+            </code>
+        </pre>
+
+        <p>
+Now, that we have prepared our inputs and outputs, let's start building our language model. We will be making use of the decoder only architecture of the transformers model. 
+        </p>
+
+        <h3>
+            PyTorch's nn.Module refresher
+        </h3>
+        <p>
+            We will do all our neural network's modules by extending PyTorch's nn.Module class. This provide's a lot of cool features. For instance, you can save all the parameters related to the language model using a single command like:
+        </p>
+
+        <pre>
+            <code class="language-python">
+torch.save(model.state_dict(), file_path)
+            </code>
+        </pre>
+
+Doing that would help you load a model later very fast or would also help you start your training from already trained weights. 
+
+One other cool benefit with using this Module is that you can assign all the parameters inside an object to a specified device easily using the `.to()` function.
+
+There are two parts of `nn.Module` that you would most commonly use. The constructor and the `forward` function. In the constructor you mostly define the different layers of neural networks that get to be applied, and in the forward function you actually execute using those defined layers. Here is a simple example with two linear layers.
+
+        <pre>
+            <code class="language-python">
+class Model(nn.Module):
+  def __init__(self):
+    super().__init__()
+    self.linear1 = nn.Linear(784, 32)
+    self.linear2 = nn.Linear(32, 10)
+
+  def forward(self, x):
+    x = self.linear1(x)
+    x = self.linear2(x)
+    return x
+
+model = Model()
+# now to call the forward function you just do: model()
+            </code>
+        </pre>
+
+Considering the above model, you don't need to explicitly call the `forward` function. It is part of python's built in `__call__` function that would make the class a callable. So, you just call the object instantiated from that class as if it was a function.
+
+So, having refreshed the PyTorch's `nn.Module` super class, let's create the skeleton of our language model's class too.
+
+        <pre>
+            <code class="language-python">
+class LanguageModel(nn.Module):
+  def __init__(self) -> None:
+    super().__init__()
+    # token embedding
+    # positional encoding
+    # N decoders
+    # a layer norm
+    # a feedforward 
+    # a relu
+    # another feedforward
+    pass
+
+  def forward(self, x):
+    pass
+            </code>
+        </pre>
+
+*What about the configurations?????*
+##### Token Embeddings
+Defining the token embeddings in PyTorch is fairly easy. Simply we need to define in the constructor of `LanguageModel` like this:
+
+        <pre>
+            <code class="language-python">
+self.token_embedding = nn.Embedding(vocab_size, ndim)
+            </code>
+        </pre>
+
+But there are some important questions we need to ask. What is going on underneath? When is the embedding trained? what are the parameters `vocab_size` and `ndim`?
+
+Embeddings represent the relationship of tokens in an n dimensional space. Imagine the words "cat" and "dog" for a moment. It feels in your imagination that the words aren't too far apart from each other. Imagine now the word "car" -  you know that you have to travel some distance away from both "cat" and "dog", even though the word is alphabetically close to a "cat". The German world for a "cat" is "katze" - now when you add this word into this relationship, you realize that you need a 4th dimension - a dimension that would still maintain the relationship with "cat" and "dog" but in a different language dimension. There are these and thousands of relationships between different words. And all these relationships need to be mapped for us to use these words in a language model. That is what token embedding is doing in simple terms. You probably have imagined a 4dimension for yourself now - but in GPT-3's case they used ????????? dimensions.
+
+If you see PyTorch's `nn.Embedding` class implementation it contains a `weight` FloatTensor. The number of rows would be the size of our dictionary - and the number of columns would be the n-dimensions with which every token is represented in the n-dimensional space.
+
+You can let your language model learn everything from end to end, including the embeddings.
+
+##### Positional Encoding
+one thing to notice is that the positional encoding and the token embedding are added together. that means the dimensions for both should be the same. In the original transformers paper, positional encoding uses sinusoidals and that is what we will be sticking with also here.
+
+$PE_{(pos, 2i)} = sin(pos/10000^{2i/d_{model}})$ 
+$PE_{(pos, 2i + 1)} = cos(pos/10000^{2i/d_{model}})$ 
+
+To make this simple, let's just see this with an example. Let's say our Input contains the tokens in the array: \["France", "is", "a", "country", "in", "Europe"\] and let's say our dimension for both the token embeddings and the positional encodings is 8. So here, is the final matrix corresponding the positional encoding.
+
+|  | i = 0<br>2i = 0<br>0 (2i) | i = 0<br>2i = 0<br>1 (2i + 1) | i = 1<br>2i = 2<br>2 (2i) | i = 1<br>2i = 2<br>3 (2i + 1 ) | i = 2<br>2i = 4<br>4 (2i) | i = 2<br>2i = 4<br>5 (2i + 1 ) | i = 3<br>2i = 6<br>6 (2i) | i = 3<br>2i = 6<br>7 (2i + 1 ) |
+| ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- | ---- |
+| France (pos = 0) | $sin(0/10000^{(0/8)})$ | $cos(0/10000^{(0/8)})$ | $sin(0/10000^{(2/8)})$ | $cos(0/10000^{(2/8)})$ | $sin(0/10000^{(4/8)})$ | $cos(0/10000^{(4/8)})$ | $sin(0/10000^{(6/8)})$ | $cos(0/10000^{(6/8)})$ |
+| is (pos = 1) | $sin(1/10000^{(0/8)})$ | $cos(1/10000^{(0/8)})$ | $sin(1/10000^{(2/8)})$ | $cos(1/10000^{(2/8)})$ | $sin(1/10000^{(4/8)})$ | $cos(1/10000^{(4/8)})$ | $sin(1/10000^{(6/8)})$ | $cos(1/10000^{(6/8)})$ |
+| a (pos = 2) | $sin(2/10000^{(0/8)})$ | $cos(2/10000^{(0/8)})$ | $sin(2/10000^{(2/8)})$ | $cos(2/10000^{(2/8)})$ | $sin(2/10000^{(4/8)})$ | $cos(2/10000^{(4/8)})$ | $sin(2/10000^{(6/8)})$ | $cos(2/10000^{(6/8)})$ |
+| country (pos = 3) | $sin(3/10000^{(0/8)})$ | $cos(3/10000^{(0/8)})$ | $sin(3/10000^{(2/8)})$ | $cos(3/10000^{(2/8)})$ | $sin(3/10000^{(4/8)})$ | $cos(3/10000^{(4/8)})$ | $sin(3/10000^{(6/8)})$ | $cos(3/10000^{(6/8)})$ |
+| in (pos = 4) | $sin(4/10000^{(0/8)})$ | $cos(4/10000^{(0/8)})$ | $sin(4/10000^{(2/8)})$ | $cos(4/10000^{(2/8)})$ | $sin(4/10000^{(4/8)})$ | $cos(4/10000^{(4/8)})$ | $sin(4/10000^{(6/8)})$ | $cos(4/10000^{(6/8)})$ |
+| Europe (pos = 5) | $sin(5/10000^{(0/8)})$ | $cos(5/10000^{(0/8)})$ | $sin(5/10000^{(2/8)})$ | $cos(5/10000^{(2/8)})$ | $sin(5/10000^{(4/8)})$ | $cos(5/10000^{(4/8)})$ | $sin(5/10000^{(6/8)})$ | $cos(5/10000^{(6/8)})$ |
+
+Language models used to be based on recurrent neural networks in the past where recurrence was the main part of how sequence to sequence models were handled. Outputs used to be part of the next hidden layers and that made parallelization very difficult. *The transformers architecture relies on attention mechanism to attend to the contextual meaning of the different parts of a sentence.* So the need for positional information is important. That is why the positional encoding is part of the input of the encoder and decoder in the transformer architecture.
+
+As you can notice from the above, we are using $sin$ for the even indices and $cos$ for the odd indices. The denominator inside the sinusoids is the same depending on the dimensional index. Here is a little refresher on `torch.arange` and applying functions on an entire tensor.
+
+        <pre>
+            <code class="language-python">
+# with libraries like PyTorch and numpy, applying functions like sin, cosine, abs, pow etc on a whole matrix/tensor is very common. That means the function will be applied on all the values inside
+# 
+# torch.arange creates consecutive values from start to end based on step value
+# as an example let's plot a simple sine graph between 0 and 4*pi using torch.arange using 10^4 values
+#
+# 
+x = torch.arange(1e4)
+# x contains 1,2,3,...,10000
+# let's equally arrange those values between 0 and 4*pi as an example
+x = x * (4*torch.pi/1e4) # this would multiply every value in the tensor by a constant
+x = torch.sin(x) # now it applies sin to every value in the tensor
+plt.plot(x)
+plt.show()
+            </code>
+        </pre>
+
+
+The resulting plot from the above snippet looks like that. The above is a good example how functions are applied to all values in a tensor, which we are also going to do for the positional encoding.
+
+First let's create the $pos$ tensor. As you can see in the table it increases by 1 for every row. So, we will do the same and create a column vector of length same as the `context_length` by using `torch.arange`. To change to a column vector we would have to reshape because by default the `arange` in this case would give you a flattened tensor.
+
+        <pre>
+            <code class="language-python">
+pos = torch.arange(context_length).view(context_length, 1)
+# normally instead of the view, unsqueeze(-1) would have been enough. But I would hate to explain that right now.
+            </code>
+        </pre>
+
+If you notice above, the division term inside the sinusoids ($10000^{2i/d_{model}}$) is the same for every column across the rows. Additionally, the similarity spans for pairs of columns too. This shows that it is enough to create the division tensor only once but use it twice. According to the formula the altering term in the formula goes as 0,2,4,...,ndim/2.
+
+        <pre>
+            <code class="language-python">
+div_term = 10000**(torch.arange(0, ndim, 2)/ndim)
+            </code>
+        </pre>
+
+Now, simply we multiply the values in even indices in `pos` with the `div_term` and we do the same for the odd indices. To select the even indices (considering a 0 based indexing) you would do `pos_encoding[::2]` and for the odd ones you do the same but you start from 1, i.e. `pos_encoding[1::2]`.  Let's wrap these parts up together.
+
+        <pre>
+            <code class="language-python">
+pe = torch.zeros(context_length, ndim)
+pe[:, ::2] = torch.sin(pos * div_term)
+pe[:, 1::2] = torch.cos(pos * div_term)
+            </code>
+        </pre>
+
+The positional encoding is just part of the input and doesn't have any learnable parameters. For a fixed size context length, the positional encoding would also have the same values. So, because of that we would just store the generated tensor inside a buffer that we can also repeatedly access it.
+
+        <pre>
+            <code class="language-python">
+class PositionalEncoding(nn.Module):
+  "Implement the PE function."
+  def __init__(self, context_length, ndim):
+    super().__init__()
+    pos_encoding = torch.zeros(context_length, ndim)
+    pos = torch.arange(context_length).unsqueeze(-1)
+    div_term = 1/10000**(torch.arange(0, ndim, 2)/ndim)
+    pos_encoding[:, ::2] = torch.sin(pos * div_term)
+    pos_encoding[:, 1::2] = torch.cos(pos * div_term)
+    self.register_buffer('pos_encoding', pos_encoding)
+
+  def forward(self, x):
+    return x + self.pos_encoding
     
-    <h1>GPT from scratch!</h1>
-    <pre>
-        <code class="language-html">
-           <html>
-               <head>
-               </head>
-           </html>
-        </code>
-    </pre>
+            </code>
+        </pre>
+
+The positional encoding is added to the token embedding in the transformer. That is also why we added the input `x` to `self.pos_encoding` in the `forward` function.
+
+##### Batches, broadcasting, in_features, out_features
+
+So far our language model module looks like the following:
+
+        <pre>
+            <code class="language-python">
+class LanguageModel(nn.Module):
+  def __init__(self, vocab_size, ndim, context_length) -> None:
+    super().__init__()
+    self.token_embedding = nn.Embedding(vocab_size, ndim)
+    self.positional_encoding = PositionalEncoding(context_length, ndim)
+    # N decoders
+    # a layer norm
+    # a feedforward 
+    # a relu
+    # another feedforward
+    pass
+
+  def forward(self, x):
+    x = self.token_embedding(x)
+    x = self.positional_encoding(x)
+            </code>
+        </pre>
+
+There are a few important questions to ask yourself looking at `x` there.
+- What kind of input is expected as x?
+- What could the shape of the input be at the beginning?
+- How is the shape changing through out?
+
+The input to the language model is one batch of training data, basically what `Corpus.get_batch()` returns for us. If you remember we break the corpus of text data into `context_length` tokens, encoded them into numbers and stacked them into many rows. So that means `x` would have shape of `(batch_size, context_length)`.
+
+Later when we call `x = self.token_embedding(x)` our input is extended into further depth because we convert every token into embedding vector. Therefore at this point `x` would have shape of `(batch_size, context_length, ndim)`. So our tensor is already 3 dimensions deep.
+
+In the coming sections, in the multi-head attention and the likes you would introduce neural network connection through `nn.Linear` 
+
+**I ll come back to this**
+##### Masked multi-head attention
+So far we have token embeddings that contain representation of individual words and positional encodings that encode position of each token in the given input. However, we would need to map the context of each token according to the given input. This was previously mapped in the hidden layers of the recurrence. In the transformer architecture this is handled in the attention mechanism.
+
+For instance, consider an input that goes like:
+
+`He went to park his vehicle at the north of the national park.`
+
+As a human when you read a sentence like this, you attend to the different words with different context and connect the words together in different forms. The importance and the relationship between the words are mapped in your imagination from your previous experiences. The word "his" in the above input is important to the words "He" and "vehicle" but not for "national" for instance. Also, depending on the context the word "park" could mean different things. So, the initial embedding associated with the word "park" has to be improved.
+
+This relationship and improved embedding of the different tokens of the given input is handled by the attention mechanism of the transformer architecture. This is one of the most important parts of the transformer architecture. Together with the positional encoding attention mechanism has replaced the need for recurrence.
+
+The intuition and application of the attention mechanism in the transformer architecture is a bit difficult to grasp and it wasn't also something that you can easily get just by reading the paper. Let's see for instance one paragraph from the paper:
+
+> An attention function can be described as mapping a query and a set of key-value pairs to an output, where the query, keys, values, and output are all vectors. The output is computed as a weighted sum of the values, where the weight assigned to each value is computed by a compatibility function of the query with the corresponding key.
+
+There is a lot of questions to ask here:
+1. What is going to be trained with neural network when it comes to attention?
+2. What are these query, key, value things? are they vectors, matrices or what? 
+3. Do the query, key, value need to be transformed?
+
+==
+So far the input to the first of the n decoders would be the sum of token embeddings to positional encoding. 
+
+The query, key and value are all vectors of tokens. Both the query and key will be transformed into the same projection. Therefore they are multiplied by a respective weight matrix like $W_q$, $W_k$. Those are what the backpropagation actually updates. Those are part of the trainable parameters for the transformer architecture. A simple matrix multiplication like that can easily be achieved by using PyTorch's `nn.Linear`
+
+One thing that confused me when working with `nn.Linear` was that there is a shape mismatch. how, you may ask. As we said the input as query are just the token embeddings. Considering the batch and the context length - we would have a 3-dimensional tensor with a shape of `(batch_size, context_length, ndim)`. However, according to the documentation `nn.Linear` would create a `weight` tensor with a shape of `(in_features, out_features)` - so, a 2 dimensional tensor. Simply, what happens is that this tensor would be broadcast across all batches across the outer dimension. 
+
+        <p>
+            You have to realize that `nn.Linear` is a generic implementation and it should be able to apply it to any number of batches and also context length. So what is important is the number of in_features that would be transformed through matrix multiplication to out_features. (If you want to think in a 2d matrix the sideways data is what matters when it comes to the input)
+        </p>
+
+
+==
+In this case we only want to multiply weight matrices to query, key and value - so we have to ignore the bias term in `nn.Linear`. It would look like:
+
+        <pre>
+            <code class="language-python">
+self.query_proj = nn.Linear(ndim, ndim)
+            </code>
+        </pre>
+
+        <p>
+            currently, ndim is directly transformed to ndim. However, let's see what the transformer paper says:
+        </p>
+
+        <p>
+            > Instead of performing a single attention function with $d_{model}$-dimensional keys, values and queries, we found it beneficial to linearly project the queries, keys and values h times with different, learned projections to $d_k$, $d_k$ and $d_v$ dimensions, respectively.
+        </p>
+
+        <p>
+            So, the $h$ above indicates the number of heads. These are all performed in parallel. Several attention heads acting in parallel to draw context and later they are concatenated together to form $d_{model}$ features. ($d_{model}$ is what we are calling `ndim` here)
+        </p>
+
+        <p>
+            (**a figure here would be great to be honest.. doesn't need to be a bunch of cubes.. just a bunch of rectangles... one big rectangle to indicate the batches... inner rectangle to indicate a sample - token1, token2, ... token_{context_length} kind of and columns of 1, 2 ... ndim - and another rectangle on the side of the weight matrix that will be broadcast over all the batch**)
+        </p>
+
+        <p>
+            Let's start creating the main skeleton of the single attention head. Here is a start:
+        </p>
+
+        <pre>
+            <code class="language-python">
+class AttentionHead(nn.Module):
+  def __init__(self, nheads) -> None:
+    super().__init__()
+    head_dim = ndim // nheads
+    self.query_proj = nn.Linear(ndim, head_dim, bias=False)
+    self.key_proj = nn.Linear(ndim, head_dim, bias=False)
+    self.value_proj = nn.Linear(ndim, head_dim, bias=False)
+    self.final_proj = nn.Linear(head_dim, head_dim, bias=False)
+
+  def forward(self, x):
+    q = self.query_proj(x)
+    k = self.key_proj(x)
+    v = self.value_proj(v)
+            </code>
+        </pre>
+
+        <p>
+            Where did the `final_proj` come from?
+        </p>
+
+        <p>
+            Query, key and value align with retrieval systems. How you would query youtube for some "cat dancing on piano" videos and that youtube would search through some index for any of those matches and retrieves for you n choices sorted based on some sort of relevance - here context retrieval is carried out on the given tokens.
+        </p>
+
+        <p>
+            To calculate similarity in the first step a scaled dot product is used. To keep the value numerically stable it is scaled by dividing with the square root of ...
+        </p>
+
+        <pre>
+            <code class="language-python">
+r = q@k.transpose(-2, -1)
+            </code>
+        </pre>
+
+        <p>
+            **Quote from the book about doing masking** - what really is the need for masking in auto-regressive models? for machine translation, perhaps - but why for a language model?
+        </p>
+
+        <p>
+            The trick for masking - how to apply the masking
+        </p>
+
+        <pre>
+            <code class="language-python">
+r = r.masked_fill(self.tril == 0, float("-inf"))
+r = F.softmax(r, dim=-1)
+            </code>
+        </pre>
+
+        <p>
+            What do you expect the shape of `r` to be at this point? and what does that mean for the value tensor
+        </p>
+
+        <p>
+            After all that we have to do matrix multiplication with the projected value tensor.
+        </p>
+
+        <pre>
+            <code class="language-python">
+r = r@v
+out = self.final_proj(r)
+            </code>
+        </pre>
+
+        <p>
+            Bringing everything together, a single attention head would look like this:
+        </p>
+
+        <pre>
+            <code class="language-python">
+class AttentionHead(nn.Module):
+    def __init__(self, nheads) -> None:
+        super().__init__()
+        head_dim = ndim // nheads
+        self.query_proj = nn.Linear(ndim, head_dim, bias=False)
+        self.key_proj = nn.Linear(ndim, head_dim, bias=False)
+        self.value_proj = nn.Linear(ndim, head_dim, bias=False)
+        self.final_proj = nn.Linear(head_dim, head_dim, bias=False)
+        self.register_buffer('tril', torch.tril(torch.ones(context_length, context_length)))
+
+    def forward(self, x):
+        q = self.query_proj(x)
+        k = self.key_proj(x)
+        v = self.value_proj(x)
+        r = q@k.transpose(-2, -1)
+        r = r.masked_fill(self.tril == 0, float("-inf"))
+        r = F.softmax(r, dim=-1)
+        r = r@v
+        return self.final_proj(r)
+            </code>
+        </pre>
+
+        <p>
+            now we need additional class that can run those `h` instances of `AttentionHead` and concatenate them together. 
+        </p>
+
+        <pre>
+            <code class="language-python">
+class MaskedMultiHeadAttention(nn.Module):
+    def __init__(self, nheads) -> None:
+        super().__init__()
+        self.heads = nn.ModuleList([AttentionHead(nheads) for _ in range(nheads)])
+
+    def forward(self, x):
+        out = torch.cat([head(x) for head in self.heads], dim=-1)
+        return out
+            </code>
+        </pre>
+
+
+        <h3>
+            Feedforward
+        </h3>
+
+        <p>
+            As you can see in the transformer architectural diagram, a feedforward layer follows after the normalized skip connection involving the attention mechanism. Here is what the paper says about the feedforward layer.
+        </p>
+
+        <blockquote>
+... consists of two linear transformations with a ReLU activation in between.
+$FFN(x) = max(0, xW_1 + b_1)W_2 + b_2$
+
+... The dimensionality of input and output is $d_{model} = 512$, and the inner-layer has dimensionality $d_{ff} = 2048$.
+
+        </blockquote>
+
+        <p>
+            As we can see the output of the first linear layer is $4*d_{model}$ and then finally it settles back to a dimensionality of $d_{model}$ at the end. The feedforward network would look simply like this:
+        </p>
+
+        <pre>
+            <code class="language-python">
+self.linear1 = nn.Linear(ndim, ndim * 4)
+self.relu = nn.ReLU()
+self.linear2 = nn.Linear(ndim * 4, ndim)
+            </code>
+        </pre>
+
+        <p>
+            One way to make the above code look nicer is to simply use a `nn.Sequential`. It would do the same job as the above. So, our feedforward network looks like the following:
+        </p>
+
+        <pre>
+            <code class="language-python">
+class FeedForward(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.ffwd = nn.Sequential(
+            nn.Linear(ndim, ndim * 4),
+            nn.ReLU(),
+            nn.Linear(ndim * 4, ndim)
+        )
+
+    def forward(self, x):
+        x = self.ffwd(x)
+        return x
+            </code>
+        </pre>
+
+        <h3>
+            N Decoders
+        </h3>
+
+        <p>
+            Now we need N layers of decoders, stacked on top of each other. That means the input to the second decoder is the output from the first decoder and that goes all the way up. First let's create the Decoder class.
+        </p>
+
+        <pre>
+            <code class="language-python">
+class Decoder(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.masked_attention = MaskedMultiHeadAttention(nheads)
+        self.layernorm = nn.LayerNorm(ndim)
+
+    def forward(self, x):
+        x = x + self.masked_attention(x)
+        x = self.layernorm(x)
+        return x
+            </code>
+        </pre>
+
+        <p>
+            In the decoder there is a residual/skip connection. The input value before the attention is added again to the output of the attention and then normalized. 
+        </p>
+
+        <p>
+            We have to specify the number of decoders in our configuration, `ndecoders` and create those many `Decoder` instances inside the Language model. In that case we would have to create n times this:
+        </p>
+
+        <pre>
+            <code class="language-python">
+self.decoder1 = nn.Decoder() #repeat ndecoder times
+            </code>
+        </pre>
+
+        <p>
+            PyTorch's `nn.Sequential` works good for such cases. You can stack all the layers in there and input is applied through the layers sequentially. In python you can extend a list to be just argument entries by applying `*` on the list. So, that would become something like:
+        </p>
+
+        <pre>
+            <code class="language-python">
+self.decoders = nn.Sequential(*[Decoder() for _ in range(ndecoders)])
+            </code>
+        </pre>
+
+        <h3>
+            Combining together
+        </h3>
+
+        <p>
+            We are coming close to finishing the language model. There are a few things left, tho.
+        </p>
+
+        <p>
+            1. Techniques for regularization. The paper mentions 2 methods. Residual dropout and label smoothing. We will include the Residual dropout here.
+        </p>
+
+        <p>
+            > We apply dropout to the output of each sub-layer, before it is added to the sub-layer input and normalized. In addition, we apply dropout to the sums of the embeddings and the positional encodings in both the encoder and decoder stacks. For the base model, we use a rate of Pdrop = 0.1.
+        </p>
+
+        <p>
+            2. after the decoders there is a linear transformation and a final softmax layer.
+        </p>
+
+        <p>
+            What should the final linear transformation map towards? ultimately, we want to predict the probability of each token in the dictionary as a way of continuing the given prompt. Currently, the dimensionality reached is `ndim`. However, for the final layer, we would transform that to `vocab_size`.  Something like:
+        </p>
+
+        <pre>
+            <code class="language-python">
+self.final_proj = nn.Linear(ndim, vocab_size)
+            </code>
+        </pre>
+
+        <p>
+            To have probability values we will apply softmax on top of that. This, however depends on what kind of loss function we would want to have. We will use a negative log likelihood loss. In that case we have to take the log of softmax. Here is what the documentation says on NLLLoss:
+        </p>
+
+        <blockquote>
+The input given through a forward call is expected to contain log-probabilities of each class.
+
+Obtaining log-probabilities in a neural network is easily achieved by adding a *LogSoftmax* layer in the last layer of your network. You may use *CrossEntropyLoss* instead, if you prefer not to add an extra layer.
+
+        </blockquote>
+
+        <p>
+            The softmax is obviously applied on the last dimension where the probability for every vocab entry is expected. Selecting the last dimension is always easy because we only need to give a -1 as the dimension.
+        </p>
+
+        <pre>
+            <code class="language-python">
+class LanguageModel(nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+        self.token_embedding = nn.Embedding(vocab_size, ndim)
+        self.positional_encoding = PositionalEncoding()
+        self.decoders = nn.Sequential(*[Decoder() for _ in range(ndecoders)])
+        self.ffwd = FeedForward()
+        self.layernorm = nn.LayerNorm(ndim)
+        self.proj = nn.Linear(ndim, vocab_size)
+        self.dropout1 = nn.Dropout(p=pdrop)
+        self.dropout2 = nn.Dropout(p=pdrop)
+
+    def forward(self, x):
+        x = self.token_embedding(x)
+        x = self.positional_encoding(x)
+        x = self.decoders(x)
+        x = self.layernorm(x + self.ffwd(x))
+        x = self.proj(x)
+        x = F.log_softmax(x, dim=-1)
+        return x
+            </code>
+        </pre>
+
+        <h3>
+            Training
+        </h3>
+
+        <p>
+            we instantiate our language model and we assign to our device (either cuda or mps or  cpu - based on what is available and what we have been using before). When we do that all the parameters inside the model will also automatically be assigned to the same device.
+        </p>
+
+        <pre>
+            <code class="language-python">
+model = LanguageModel().to(device)
+            </code>
+        </pre>
+
+        <p>
+            One important question you have to ask yourself is, why does a neural networks model work? Why does it work for so many cases? neural networks models are applied through the industry in such diverse domains as speech recognition, computer vision, natural language processing etc. Just because there is a connection of "neurons" with values between 0 and 1 - why should it magically work for everything? The answer to that question lies in the expectation of an output and the gradient descent algorithm involved. 
+        </p>
+
+        <p>
+            Coming back to the previous example we had "France is a country in" with a dictionary list of tokens of \["Asia", "Cat", "Europe", "Water"\]. Your expected output probability should be like: \[0, 0, 1, 0\]. However, if your model gave a probability output of something like: \[0.20, 0.34, 0.26, 0.2\], then you know your model is off by some distance. If you consider an euclidean distance measure then the distance would be something like:
+        </p>
+
+        <p>
+            Obviously, this distance that is off has to be corrected and it is caused by the many neurons (e.g. the weights of connections in between and the biases they hold) within the model. That is where calculus comes in handy, and specifically the back propagation algorithm. Back propagation answers for every change I apply on the output error distance, how much do the parameters inside the network change? *::::::::actually the other way*
+        </p>
+
+        <p>
+            We have used above the euclidean distance to calculate how far off our error is from the expected value. In classification related tasks, cross entropy or negative log likelihood are commonly used loss functions. They work good when you have probability values for n class of outputs. 
+        </p>
+
+        <p>
+            So, yeah let's define our loss function now.
+        </p>
+
+        <pre>
+            <code class="language-python">
+loss_fn = nn.NLLLoss()
+            </code>
+        </pre>
+
+        <p>
+            Since we are doing our training in batches and we have to decide on a learning rate, we need an optimization that computes our gradient across different training batches. In this case we will use the Adam optimization. The Adam optimization expects the parameters of our model and the learning rate as arguments.
+        </p>
+
+        <pre>
+            <code class="language-python">
+optim = torch.optim.Adam(model.parameters(), lr = learning_rate)
+            </code>
+        </pre>
+
+        <p>
+            When training a model, you train in batches and your loss is approximated and smoothed out through the batches. 
+        </p>
+
+        <p>
+            It is not uncommon for language models to be trained for less than an epoch - given how large the data size is. 
+        </p>
+
+        <h4>
+            Single iteration of training
+        </h4>
+        <p>
+            First we flag we are training with PyTorch's `model.train()`. This isn't doing anything more than just setting the model to training. It is important for some layers and operations that need to know whether you are training or evaluating your model. 
+        </p>
+        
+        <p>
+            After that we need our data, a batch of data - both the input and the expected output. Then we run the model on the input data. So, something like:
+        </p>
+
+        <pre>
+            <code class="language-python">
+X, y = corpus.get_batch('train')
+out = model(X)
+            </code>
+        </pre>
+
+        <p>
+            normally at this point, we would want to calculate the loss using the loss function we defined before, which is negative log likelihood. It would be nice to know what kind of inputs and what kind of shapes this loss function expects. From the documentation the `input` to the `forward` would have a shape of $(N, C)$ - where $N$ would be the mini batch size and $C$ the class of probabilities - in our case `vocab_size`. Additionally, the `target` to the `forward` would have a shape of $(N)$. When I was learning about this loss function what was very confusing for me was that I didn't know for one sample case the `target` is holding the index of just one probability class (or index of token from dictionary) but the input is holding probability for each token in the dictionary. The loss function by default assumes you have prepared the input and target like that.
+
+        </p>
+
+        <p>
+            Question: What is the shape of `out`? And what is the shape of `y`? Do, you think they could fit in the loss function the way they are? Try and figure this out yourself.
+        </p>
+
+        <p>
+            The way they are, they wouldn't fit in the loss function. Therefore, we have to reshape both of them. All we need to do for the `target` (or the `y`) in this case is just flatten. But for the `input`, we need to combine the `batch_size` with the `context_length`. 
+        </p>
+
+        <pre>
+            <code class="language-python">
+out = out.view(batch_size * context_length, vocab_size)
+y = y.view(batch_size*context_length, 1)
+loss = loss_fn(out, y.flatten())
+            </code>
+        </pre>
+        <p>
+            So far we calculated the loss. The loss has to be corrected through the backpropagation algorithm. And the step of the adam optimizer has to be injected there as well and finally we have to clear the gradients in preparation for the next iteration. Deep Learning libraries like PyTorch make things easier specially when calculating backpropagation. PyTorch uses computational graph to handle backpropagation. 
+        </p>
+
+        <pre>
+            <code class="language-python">
+loss.backward()
+optim.step()
+# clear gradient here.
+optim.zero_grad(set_to_none=True)
+            </code>
+        </pre>
+        <p>
+            Additionally, it would be nice if there is a way to know the loss value both for the training minibatch and also for the evaulation dataset. Let's create a function called `evaluate_loss` that handles this.
+        </p>
+
+        <pre>
+            <code class="language-python">
+@torch.no_grad()
+def evaluate_loss():
+    # let's do this for like 10 batches
+    entire_loss = 0.
+    eval_batches = 10
+    for i in range(eval_batches):
+        model.eval()
+        X, y = corpus.get_batch('test')
+        out = model(X)
+        out = out.view(batch_size * context_length, vocab_size)
+        y = y.view(batch_size * context_length, 1)
+        loss = loss_fn(out, y.flatten())
+        entire_loss += loss.item()
+    
+    return entire_loss / eval_batches
+            </code>
+        </pre>
+
+        <p>
+            looping through the training data and showing loss for every 500th training our training code would look like the following:
+        </p>
+
+        <pre>
+            <code class="language-python">
+model = LanguageModel().to(device)
+# the optimizer
+optim = torch.optim.Adam(model.parameters(), lr = learning_rate)
+loss_fn = nn.NLLLoss()
+
+for i in range(niter):
+    model.train()
+    X, y = corpus.get_batch('train')
+    out = model(X)
+    out = out.view(batch_size * context_length, vocab_size)
+    y = y.view(batch_size*context_length, 1)
+    loss = loss_fn(out, y.flatten())
+    if i%500 == 0:
+        val_loss = evaluate_loss()
+        print(f"At iteration: {i + 1} | training loss: {loss.item()}, val loss: {val_loss}")
+    loss.backward()
+    optim.step()
+    # clear gradient here.
+    optim.zero_grad(set_to_none=True)
+            </code>
+        </pre>
+
+running through, running through, 
+
+    
+    </div>
+    
     <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
 
     <!-- and it's easy to individually load additional languages -->
@@ -27,7 +1013,6 @@
 
     <script>hljs.highlightAll();</script>
 
-    
     <!-- End of content -->
     
     <!-- You can include additional scripts here -->
