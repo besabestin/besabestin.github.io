@@ -8,6 +8,8 @@ body {
 .main-content {
   max-width: 840px;
   margin: 0 auto;
+  padding-left: 10px;
+  padding-right: 10px;
 }
 
 .pe-table {
@@ -43,4 +45,12 @@ code.inline-code {
   font-size: 0.7rem;
   margin-top: 0.3rem;
   margin-bottom: 1rem;
+}
+
+blockquote {
+  font-weight: 300;
+  font-size: 0.9rem;
+  border-left: 3px solid #ddd;
+  padding-left: 1rem;
+  margin-left: 0;
 }

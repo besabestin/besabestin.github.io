@@ -556,7 +556,7 @@ Language models used to be based on recurrent neural networks in the past where 
         </p>
 
         <p>
-As you can notice from the above, we are using $$sin$$ for the even indices and $$cos$$ for the odd indices. The denominator inside the sinusoids is the same depending on the dimensional index. Here is a little refresher on <code class="inline-code">torch.arange</code> and applying functions on an entire tensor.
+As you can notice from the above, we are using \(sin\) for the even indices and \(cos\) for the odd indices. The denominator inside the sinusoids is the same depending on the dimensional index. Here is a little refresher on <code class="inline-code">torch.arange</code> and applying functions on an entire tensor.
         </p>
 
         <pre>
@@ -995,9 +995,9 @@ self.decoders = nn.Sequential(*[Decoder() for _ in range(ndecoders)])
             1. Techniques for regularization. The paper mentions 2 methods. Residual dropout and label smoothing. We will include the Residual dropout here.
         </p>
 
-        <p>
-            > We apply dropout to the output of each sub-layer, before it is added to the sub-layer input and normalized. In addition, we apply dropout to the sums of the embeddings and the positional encodings in both the encoder and decoder stacks. For the base model, we use a rate of Pdrop = 0.1.
-        </p>
+        <blockquote>
+            We apply dropout to the output of each sub-layer, before it is added to the sub-layer input and normalized. In addition, we apply dropout to the sums of the embeddings and the positional encodings in both the encoder and decoder stacks. For the base model, we use a rate of Pdrop = 0.1.
+        </blockquote>
 
         <p>
             2. after the decoders there is a linear transformation and a final softmax layer.
