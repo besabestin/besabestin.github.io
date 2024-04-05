@@ -32,10 +32,15 @@ body {
   background-color: #ddd;
 }*/
 
-pre.inline-code {
-  display: inline;
+code.inline-code {
+  background: #ddd;
+  padding: 3px 5px;
+  border-radius: 4px;
 }
 
-pre.inline-code code.hljs {
-  display: inline;
+.caption-text {
+  font-style: italic;
+  font-size: 0.7rem;
+  margin-top: 0.3rem;
+  margin-bottom: 1rem;
 }

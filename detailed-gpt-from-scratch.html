@@ -25,7 +25,7 @@
             I learned a lot from Andrej Karpathy's youtube tutorial and you may find a lot of code has been inspired from that. It wouldn't have been easier without his explanation, so, please go check it out.
         </p>
         <p>
-            The weird thing about this note here is that, the introduction (or what should have been an introduction) comes later in the document. This is because I want whoever stumbles here can just directly start doing. I ll be using PyTorch and I hope you have already installed and ready to go. Better to install with conda mostly because you can switch between different environments easily.
+            The weird thing about this note here is that, the introduction (or what should have been an introduction) comes later in the document. This is because I want whoever stumbles here can just directly start doing. I ll be using PyTorch and I hope you have already installed and ready to go. Better to install with conda mostly because you can switch between different environments easily. Also, I am not using Jupyter notebook - So, start a python file like lm.py.
         </p>
         <pre>
             <code class="language-python">
@@ -40,8 +40,9 @@ device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is
         <p>
             You need to import the above libraries to follow this tutorial. We also need to identify what kind of device is available in our system. If GPU is available it will use cuda. In my case since I am on a Mac M1 it is using "mps". 
         </p>
+        <h3>Input and outputs, tokenization, dictionary</h3>
         <p>
-            Now, the first question one needs to deal with is what are the inputs and what are the outputs. Like any system, we need to model our inputs and our outputs. In this case our input is a bunch of text. a corpus of text that is collected from such sources as books, the internet etc. That is what we are going to train our system on.
+            Now, the first question one needs to deal with is what are the inputs and what are the outputs. Like any system, we need to model our inputs and our outputs. In this case our input is a bunch of text. a corpus of text that is collected from such sources as books, the internet etc. That is what we are going to train our system on. In our case, though, we will rely on a smaller dataset.
         </p>
         <p>
             I have some dataset that I am going to use for the purpose of this tutorial. And you can find it in this repository. Please download that file to follow along.
@@ -54,18 +55,61 @@ device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is
         </p>
         <p>
             The first step is then to create a dictionary. It is easy to represent words with numbers - So, we assign index to every word in the dictionary based on the alphabetical order they appear in. Considering the above simple example,
-
-Asia: 0
-Cat: 1
-Europe: 2
-Water: 3
         </p>
+        <table class="pe-table">
+            <tr>
+                <th>Dictionary token</th>
+                <th>Numeric mapping</th>
+            </tr>
+            <tr>
+                <td>Asia</td>
+                <td>0</td>
+            </tr>
+            <tr>
+                <td>Cat</td>
+                <td>1</td>
+            </tr>
+            <tr>
+                <td>Europe</td>
+                <td>2</td>
+            </tr>
+            <tr>
+                <td>Water</td>
+                <td>3</td>
+            </tr>
+        </table>
+        <div class="caption-text">Tokens need to be mapped to numbers for ease of processing to the system</div>
+
+        <table class="pe-table">
+            <tr>
+                <th>Numeric mapping</th>
+                <th>Dictionary token</th>
+            </tr>
+            <tr>
+                <td>0</td>
+                <td>Asia</td>
+            </tr>
+            <tr>
+                <td>1</td>
+                <td>Cat</td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td>Europe</td>
+            </tr>
+            <tr>
+                <td>3</td>
+                <td>Water</td>
+            </tr>
+        </table>
+        <div class="caption-text">Reverse mapping. Useful to show readable text to the user at the end.</div>
+
         <p>
-            Now that we agree that we have to represent the words in numbers, we also have to realize that we need the reverse process of changing the numbers back to words. This is specially the case whenever we want to show for the user the generated words by the language model. So, in the above case 0 would map to "Asia" and 1:Cat, 2:Europe, 3:Water.
+            Now that we agree that we have to represent the words in numbers, we also have to realize that we need the reverse process of changing the numbers back to words. This is specially the case whenever we want to show for the user the generated words by the language model. 
         </p>
         <pre>
             <code class="language-python">
-#consider vocab here contains all unique words in our corpus
+#consider vocab here contains all unique tokens in our corpus
 word2idx = {} #this would contain all mappings from token to number
 for idx, word in enumerate(sorted(list(vocab))):
     word2idx[word] = idx
@@ -77,7 +121,7 @@ for word in vocab:
             </code>
         </pre>
         <p>
-            Given that we are using python, we can use generators to actually make the above code shorter. Just as an example the first loop in the above snippet can be reduced to:
+            Simply, the above is iterating all unique tokens and assigning them unique indices through `enumerate` and combining that in a dictionary datastructure. Given that we are using python, we can use generators to simplify the code. Just as an example the first loop in the above snippet can be reduced to:
         </p>
         <pre>
             <code class="language-python">
@@ -86,7 +130,7 @@ word2idx = {word: idx for idx, word enumerate(sorted(list(vocab)))}
         </pre>
 
         <p>
-            Additionally, we would need two functions that make our tasks easier. Whenever we have a list of words (like a reply to a prompt) represented as numbers we would wish to convert all of them at once to actual words. In that case we would need a function called `decode`. Similarly, we would also need an `encode` function that does the reverse.
+            Additionally, we would need two functions that make our tasks easier. Whenever we have a list of words represented as numbers (like a reply to a prompt) we would wish to convert all of them at once to actual words. In that case we would need a function called `decode`. Similarly, we would also need an `encode` function that does the reverse.
         </p>
 
         <p>
@@ -119,11 +163,11 @@ class Dictionary(object):
 
 Here the steps
 
-        <h3>
+        <h4>
             read the text and create dictionary and sample space out of it
-        </h3>
+        </h4>
         <p>
-            Since our dataset is lyrics collected from several songs, we will read line by line and mark the end of each line with a special token <pre class="inline-code"><code><eol>&lt;/eol&gt;</code></pre>. We would also split the words in each line using space as delimiter. This would be our simple tokenization technique. Mainstream language models use more advanced tokenization techniques. Openai for instance uses tiktoken for creating the tokens. Each token in that case is considered to be 0.75 times an English word. Given that openai's language models have to support different kinds of languages and also other text like programming languages, it makes sense to make the dictionary other than mere English words.
+            Since our dataset is lyrics collected from several songs, we will read line by line and mark the end of each line with a special token <code class="inline-code"><eol>&lt;/eol&gt;</code>. We would also split the words in each line using space as delimiter. This would be our simple tokenization technique. Mainstream language models use more advanced tokenization techniques. Openai for instance uses bytepair encoding based tokenization for creating the tokens. Each token in that case is considered to be 0.75 times an English word. Given that openai's language models have to support different kinds of languages and also other text like programming languages, it makes sense to make the dictionary other than mere English words.
         </p>
 
 This is our simple step in the process of tokenization:
@@ -138,16 +182,16 @@ dictionary.create_vocab(words)
             </code>
         </pre>
 
-        <h3>
-            ##### break the text into overlapping (but not same) blocks of length context_size
-        </h3>
+        <h4>
+            break the text into overlapping (but not same) blocks of length context_size
+        </h4>
         <p>
             *what was the meaning, definition and the-why of context_size???*
             Once we have a large corpus of text (in this case the whole lyric text), we need to create our mapping of input to output by breaking the text to many blocks each with length of `context_size`. This `context_size` is mostly arbitrary. But also sets a limit on what length of prompt our language model is capable of accepting at the end.
         </p>
 
         <p>
-            Let's say our `context_size` is 8, all our tokens in our dictionary are English words and our entire corpus contains only the following text - this awesome quote from Carl Sagan.
+            Let's say our `context_size` is 8, all our tokens in our dictionary are English words and our corpus contains the following text - this awesome quote from Carl Sagan.
         </p>
 
         <blockquote>
@@ -160,8 +204,8 @@ dictionary.create_vocab(words)
 
         <table  class="pe-table">
             <tr>
-                <th>**Inputs**</th>
-                <th>**Outputs**</th>
+                <th>Inputs</th>
+                <th>Outputs</th>
             </tr>
             <tr>
                 <td>['The', 'Earth', 'is', 'a', 'very', 'small', 'stage', 'in']</td>
@@ -184,34 +228,50 @@ dictionary.create_vocab(words)
             Having broken the text like that, these are the few things that we need to apply on that.
         </p>
         <ul>
-            <li>We make use of the function `encode` we created before to change the strings into numbers.</li>
-            <li>We wrap them all in PyTorch's `tensor` datastructure and we stack all rows together.</li>
+            <li>We make use of the function <code class="inline-code">encode</code> we created before to change the strings into numbers.</li>
+            <li>We wrap them all in PyTorch's <code class="inline-code">tensor</code> datastructure and we stack all rows together.</li>
+            <li>We prepare a way to take shuffled batches out of the stacked dataset.</li>
         </ul>
 
         <pre>
             <code class="language-python">
+# encoding and stacking the encoded examples
 context_length = 8
 input_rows = []
 for i in range(len(words) - context_length - 1):
-  input_rows.append(torch.tensor(dictionary.encode(words[i:i+context_length]), dtype=torch.long))
+  input_rows.append(
+    torch.tensor(
+      dictionary.encode(words[i:i+context_length]), 
+      dtype=torch.long
+    )
+  )
 
 inputs = torch.stack(input_rows)
             </code>
         </pre>
 
         <p>
-            The above creates the whole inputs tensor which would have a shape of `(n, context_length)`. To create the respective outputs we only shift our loops by 1 to the right. The above lines can also be squeezed into a single line.
+            The above creates the whole inputs tensor which would have a shape of <code class="inline-code">(n, context_length)</code>. To create the respective outputs we only shift our loops by 1 to the right. The above lines can also be squeezed into a single line.
         </p>
 
         <pre>
             <code class="language-python">
-inputs = torch.stack([torch.tensor(dictionary.encode(words[i:i+context_length]), dtype=torch.long) for i in range(len(words) - context_length - 1)])
-outputs = torch.stack([torch.tensor(dictionary.encode(words[i:i+context_length]), dtype=torch.long) for i in range(1, len(words) - context_length)])
+inputs = torch.stack([
+           torch.tensor(
+              dictionary.encode(words[i:i+context_length]), 
+              dtype=torch.long
+            ) for i in range(len(words) - context_length - 1)])
+
+outputs = torch.stack([
+            torch.tensor(
+              dictionary.encode(words[i:i+context_length]), 
+              dtype=torch.long
+            ) for i in range(1, len(words) - context_length)])
             </code>
         </pre>
 
         <p>
-            If we let our language model learn directly on the arrangement of the data, we may not have as good distribution as we would wish. For that reason, it is a good idea to shuffle. Before we do that let's do a little refresher on tensors. *additional reason to shuffle is so that the distribution in the test set can be the same as the distribution in the training set - otherwise we would have a problem of overfitting in the training set.*
+            If we let our language model learn directly on the arrangement of the data, we may not have as good distribution as we would wish. For that reason, it is a good idea to shuffle. Before we do that let's do a little refresher on tensors. additional reason to shuffle is so that the distribution in the test set can be the same as the distribution in the training set - otherwise we could potentially have a problem of overfitting in the training set.
         </p>
 
         <pre>
@@ -227,8 +287,10 @@ x = torch.arange(5*3).view(5,3)
 #        [ 9, 10, 11],
 #        [12, 13, 14]])
 # 
-# Let's say we want to select the above tensor in different orders of the rows.
-# consider you want to select the 4th row first then respectively the 3rd, 5th, 1st and 2nd, then we simply do:
+# Let's say we want to select the above tensor 
+# in different orders of the rows.
+# consider you want to select the 4th row first 
+# then respectively the 3rd, 5th, 1st and 2nd, then we simply do:
 # 
 y = torch.tensor([3,2,4,0,1])
 x_shuffled = x[y]
@@ -321,16 +383,16 @@ class Corpus(object):
     return dataset['X'][_perm][:self.batch_size, :].to(device), dataset['y'][_perm][:self.batch_size, :].to(device)
             </code>
         </pre>
-
+        <h3>The language model</h3>
         <p>
             Now, that we have prepared our inputs and outputs, let's start building our language model. We will be making use of the decoder only architecture of the transformers model. 
         </p>
 
-        <h3>
+        <h4>
             PyTorch's nn.Module refresher
-        </h3>
+        </h4>
         <p>
-            We will do all our neural network's modules by extending PyTorch's nn.Module class. This provide's a lot of cool features. For instance, you can save all the parameters related to the language model using a single command like:
+            We will do all our neural network's modules by extending PyTorch's <code class="inline-code">nn.Module</code> class. This provide's a lot of cool features. For instance, you can save all the parameters related to the language model using a single command like:
         </p>
 
         <pre>
@@ -344,11 +406,11 @@ Doing that would help you load a model later very fast or would also help you st
         </p>
 
         <p>
-One other cool benefit with using this Module is that you can assign all the parameters inside an object to a specified device easily using the `.to()` function.
+One other cool benefit with using this Module is that you can assign all the parameters inside an object to a specified device easily using the <code class="inline-code">.to()</code> function.
         </p>
 
         <p>
-There are two parts of `nn.Module` that you would most commonly use. The constructor and the `forward` function. In the constructor you mostly define the different layers of neural networks that get to be applied, and in the forward function you actually execute using those defined layers. Here is a simple example with two linear layers.
+There are two parts of <code class="inline-code">nn.Module</code> that you would most commonly use. The constructor and the <code class="inline-code">forward</code> function. In the constructor you mostly define the different layers of neural networks that get to be applied, and in the forward function you actually execute using those defined layers. Here is a simple example with two linear layers.
         </p>
 
         <pre>
@@ -370,11 +432,11 @@ model = Model()
         </pre>
 
         <p>
-Considering the above model, you don't need to explicitly call the `forward` function. It is part of python's built in `__call__` function that would make the class a callable. So, you just call the object instantiated from that class as if it was a function.
+Considering the above model, you don't need to explicitly call the <code class="inline-code">forward</code> function. It is part of python's built in <code class="inline-code">__call__</code> function that would make the class a callable. So, you just call the object instantiated from that class as if it was a function.
         </p>
 
         <p>
-So, having refreshed the PyTorch's `nn.Module` super class, let's create the skeleton of our language model's class too.
+So, having refreshed the PyTorch's <code class="inline-code">nn.Module</code> super class, let's create the skeleton of our language model's class too.
         </p>
 
         <pre>
@@ -396,10 +458,15 @@ class LanguageModel(nn.Module):
             </code>
         </pre>
 
-*What about the configurations?????*
-##### Token Embeddings
-Defining the token embeddings in PyTorch is fairly easy. Simply we need to define in the constructor of `LanguageModel` like this:
-
+        <h4>
+            Token Embeddings
+        </h4>
+        <p>
+            Embeddings represent the relationship of tokens in an n dimensional space. Imagine the words "cat" and "dog" for a moment. It feels in your imagination that the words aren't too far apart from each other. Imagine now the word "car" -  you know that you have to travel some distance away from both "cat" and "dog", even though the word is alphabetically close to a "cat". The German word for a "cat" is "katze" - now when you add this word into this relationship, you realize that you need a 4th dimension - a dimension that would still maintain the relationship with "cat" and "dog" but in a different language dimension. There are these and thousands of relationships between different words. And all these relationships need to be mapped for us to use these words in a language model. That is what token embedding is doing in simple terms. You probably have imagined a 4dimension for yourself now - but in GPT-3's case they used ????????? dimensions.
+        </p>
+        <p>
+            Defining the token embeddings in PyTorch is fairly easy. Simply we need to define in the constructor of `LanguageModel` like this:
+        </p>
         <pre>
             <code class="language-python">
 self.token_embedding = nn.Embedding(vocab_size, ndim)
@@ -411,18 +478,15 @@ self.token_embedding = nn.Embedding(vocab_size, ndim)
         </p>
 
         <p>
-            Embeddings represent the relationship of tokens in an n dimensional space. Imagine the words "cat" and "dog" for a moment. It feels in your imagination that the words aren't too far apart from each other. Imagine now the word "car" -  you know that you have to travel some distance away from both "cat" and "dog", even though the word is alphabetically close to a "cat". The German world for a "cat" is "katze" - now when you add this word into this relationship, you realize that you need a 4th dimension - a dimension that would still maintain the relationship with "cat" and "dog" but in a different language dimension. There are these and thousands of relationships between different words. And all these relationships need to be mapped for us to use these words in a language model. That is what token embedding is doing in simple terms. You probably have imagined a 4dimension for yourself now - but in GPT-3's case they used ????????? dimensions.
-        </p>
-
-        <p>
-            If you see PyTorch's `nn.Embedding` class implementation it contains a `weight` FloatTensor. The number of rows would be the size of our dictionary - and the number of columns would be the n-dimensions with which every token is represented in the n-dimensional space.
+            If you see PyTorch's `nn.Embedding` class implementation it contains a `weight` FloatTensor. Roughly speaking the number of rows would be the size of our dictionary - and the number of columns would be the n-dimensions with which every token is represented in the n-dimensional space.
         </p>
 
         <p>
             You can let your language model learn everything from end to end, including the embeddings.
         </p>
-
-##### Positional Encoding
+        <h4>
+            Positional Encoding
+        </h4>
         <p>
             one thing to notice is that the positional encoding and the token embedding are added together. that means the dimensions for both should be the same. In the original transformers paper, positional encoding uses sinusoidals and that is what we will be sticking with also here.
         </p>
@@ -492,7 +556,7 @@ Language models used to be based on recurrent neural networks in the past where 
         </p>
 
         <p>
-As you can notice from the above, we are using $$sin$$ for the even indices and $$cos$$ for the odd indices. The denominator inside the sinusoids is the same depending on the dimensional index. Here is a little refresher on `torch.arange` and applying functions on an entire tensor.
+As you can notice from the above, we are using $$sin$$ for the even indices and $$cos$$ for the odd indices. The denominator inside the sinusoids is the same depending on the dimensional index. Here is a little refresher on <code class="inline-code">torch.arange</code> and applying functions on an entire tensor.
         </p>
 
         <pre>
@@ -519,7 +583,7 @@ The resulting plot from the above snippet looks like that. The above is a good e
         </p>
 
         <p>
-First let's create the $$pos$$ tensor. As you can see in the table it increases by 1 for every row. So, we will do the same and create a column vector of length same as the `context_length` by using `torch.arange`. To change to a column vector we would have to reshape because by default the `arange` in this case would give you a flattened tensor.
+First let's create the \(pos\) tensor. As you can see in the table it increases by 1 for every row. So, we will do the same and create a column vector of length same as the `context_length` by using `torch.arange`. To change to a column vector we would have to reshape because by default the `arange` in this case would give you a flattened tensor.
         </p>
 
         <pre>
@@ -530,7 +594,7 @@ pos = torch.arange(context_length).view(context_length, 1)
         </pre>
 
         <p>
-            If you notice above, the division term inside the sinusoids ($$10000^{2i/d_{model}}$$) is the same for every column across the rows. Additionally, the similarity spans for pairs of columns too. This shows that it is enough to create the division tensor only once but use it twice. According to the formula the altering term in the formula goes as 0,2,4,...,ndim/2.
+            If you notice above, the division term inside the sinusoids \((10000^{2i/d_{model}})\) is the same for every column across the rows. Additionally, the similarity spans for pairs of columns too. This shows that it is enough to create the division tensor only once but use it twice. According to the formula the altering term in the formula goes as 0,2,4,...,ndim/2.
         </p>
 
         <pre>
@@ -669,7 +733,7 @@ There is a lot of questions to ask here:
 So far the input to the first of the n decoders would be the sum of token embeddings to positional encoding. 
 
         <p>
-            The query, key and value are all vectors of tokens. Both the query and key will be transformed into the same projection. Therefore they are multiplied by a respective weight matrix like $$W_q$$, $$W_k$$. Those are what the backpropagation actually updates. Those are part of the trainable parameters for the transformer architecture. A simple matrix multiplication like that can easily be achieved by using PyTorch's `nn.Linear`
+            The query, key and value are all vectors of tokens. Both the query and key will be transformed into the same projection. Therefore they are multiplied by a respective weight matrix like \(W_q\), \(W_k\). Those are what the backpropagation actually updates. Those are part of the trainable parameters for the transformer architecture. A simple matrix multiplication like that can easily be achieved by using PyTorch's `nn.Linear`
         </p>
 
         <p>
@@ -695,12 +759,12 @@ self.query_proj = nn.Linear(ndim, ndim)
             currently, ndim is directly transformed to ndim. However, let's see what the transformer paper says:
         </p>
 
-        <p>
-            > Instead of performing a single attention function with $$d_{model}$$-dimensional keys, values and queries, we found it beneficial to linearly project the queries, keys and values h times with different, learned projections to $$d_k$$, $$d_k$$ and $$d_v$$ dimensions, respectively.
-        </p>
+        <blockquote>
+            Instead of performing a single attention function with \(d_{model}\)-dimensional keys, values and queries, we found it beneficial to linearly project the queries, keys and values h times with different, learned projections to \(d_k\), \(d_k\) and \(d_v\) dimensions, respectively.
+        </blockquote>
 
         <p>
-            So, the $$h$$ above indicates the number of heads. These are all performed in parallel. Several attention heads acting in parallel to draw context and later they are concatenated together to form $$d_{model}$$ features. ($$d_{model}$$ is what we are calling `ndim` here)
+            So, the \(h\) above indicates the number of heads. These are all performed in parallel. Several attention heads acting in parallel to draw context and later they are concatenated together to form \(d_{model}\) features. (\(d_{model}\) is what we are calling `ndim` here)
         </p>
 
         <p>
@@ -835,12 +899,12 @@ class MaskedMultiHeadAttention(nn.Module):
 ... consists of two linear transformations with a ReLU activation in between.
 $$FFN(x) = max(0, xW_1 + b_1)W_2 + b_2$$
 
-... The dimensionality of input and output is $$d_{model} = 512$$, and the inner-layer has dimensionality $$d_{ff} = 2048$$.
+... The dimensionality of input and output is \(d_{model} = 512\), and the inner-layer has dimensionality \(d_{ff} = 2048\).
 
         </blockquote>
 
         <p>
-            As we can see the output of the first linear layer is $$4*d_{model}$$ and then finally it settles back to a dimensionality of $$d_{model}$$ at the end. The feedforward network would look simply like this:
+            As we can see the output of the first linear layer is \(4*d_{model}\) and then finally it settles back to a dimensionality of \(d_{model}\) at the end. The feedforward network would look simply like this:
         </p>
 
         <pre>
@@ -1008,7 +1072,7 @@ model = LanguageModel().to(device)
         </p>
 
         <p>
-            Coming back to the previous example we had "France is a country in" with a dictionary list of tokens of \["Asia", "Cat", "Europe", "Water"\]. Your expected output probability should be like: \[0, 0, 1, 0\]. However, if your model gave a probability output of something like: \[0.20, 0.34, 0.26, 0.2\], then you know your model is off by some distance. If you consider an euclidean distance measure then the distance would be something like:
+            Coming back to the previous example we had "France is a country in" with a dictionary list of tokens of ["Asia", "Cat", "Europe", "Water"]. Your expected output probability should be like: [0, 0, 1, 0]. However, if your model gave a probability output of something like: [0.20, 0.34, 0.26, 0.2], then you know your model is off by some distance. If you consider an euclidean distance measure then the distance would be something like:
         </p>
 
         <p>
@@ -1066,7 +1130,7 @@ out = model(X)
         </pre>
 
         <p>
-            normally at this point, we would want to calculate the loss using the loss function we defined before, which is negative log likelihood. It would be nice to know what kind of inputs and what kind of shapes this loss function expects. From the documentation the `input` to the `forward` would have a shape of $$(N, C)$$ - where $$N$$ would be the mini batch size and $$C$$ the class of probabilities - in our case `vocab_size`. Additionally, the `target` to the `forward` would have a shape of $$(N)$$. When I was learning about this loss function what was very confusing for me was that I didn't know for one sample case the `target` is holding the index of just one probability class (or index of token from dictionary) but the input is holding probability for each token in the dictionary. The loss function by default assumes you have prepared the input and target like that.
+            normally at this point, we would want to calculate the loss using the loss function we defined before, which is negative log likelihood. It would be nice to know what kind of inputs and what kind of shapes this loss function expects. From the documentation the `input` to the `forward` would have a shape of \((N, C)\) - where \(N\) would be the mini batch size and \(C\) the class of probabilities - in our case `vocab_size`. Additionally, the `target` to the `forward` would have a shape of \((N)\). When I was learning about this loss function what was very confusing for me was that I didn't know for one sample case the `target` is holding the index of just one probability class (or index of token from dictionary) but the input is holding probability for each token in the dictionary. The loss function by default assumes you have prepared the input and target like that.
 
         </p>
 
