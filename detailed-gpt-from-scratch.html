@@ -692,17 +692,19 @@ In the coming sections, in the multi-head attention and the likes you would intr
         </p>
 
 **I ll come back to this**
-##### Masked multi-head attention
+        <h4>
+            Masked multi-head attention
+        </h4>
         <p>
-So far we have token embeddings that contain representation of individual words and positional encodings that encode position of each token in the given input. However, we would need to map the context of each token according to the given input. This was previously mapped in the hidden layers of the recurrence. In the transformer architecture this is handled in the attention mechanism.
+So far we have token embeddings that contain representation of individual tokens and positional encodings that encode position of each token in the given input. However, we would need to map the context of each token according to the given input. In the past in RNNs this was mapped in the hidden layers of the recurrence. In the transformer architecture this is handled in the attention mechanism.
         </p>
 
         <p>
 For instance, consider an input that goes like:
         </p>
 
-        <p>
-`He went to park his vehicle at the north of the national park.`
+        <p class="highlighted">
+He went to park his vehicle at the north of the national park.
         </p>
 
         <p>

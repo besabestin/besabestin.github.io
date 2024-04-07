@@ -60,3 +60,10 @@ blockquote {
   padding-left: 1rem;
   margin-left: 0;
 }
+
+p {}
+p.highlighted {
+  background: #ddd;
+  padding: 0.4rem;
+  border-radius: 3px;
+}
