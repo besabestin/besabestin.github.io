@@ -469,12 +469,12 @@ class LanguageModel(nn.Module):
         </p>
         <pre>
             <code class="language-python">
-self.token_embedding = nn.Embedding(vocab_size, ndim)
+self.token_embedding = nn.Embedding(vocab_size, d_model)
             </code>
         </pre>
 
         <p>
-            But there are some important questions we need to ask. What is going on underneath? When is the embedding trained? what are the parameters `vocab_size` and `ndim`?
+            But there are some important questions we need to ask. What is going on underneath? When is the embedding trained? what are the parameters `vocab_size` and `d_model`?
         </p>
 
         <p>
@@ -596,12 +596,12 @@ pos = torch.arange(context_length).view(context_length, 1)
         </pre>
 
         <p>
-            If you notice above, the division term inside the sinusoids \((10000^{2i/d_{model}})\) is the same for every column across the rows. Additionally, the similarity spans for pairs of columns too. This shows that it is enough to create the division tensor only once but use it twice. According to the formula the altering term in the formula goes as 0,2,4,...,ndim/2.
+            If you notice above, the division term inside the sinusoids \((10000^{2i/d_{model}})\) is the same for every column across the rows. Additionally, the similarity spans for pairs of columns too. This shows that it is enough to create the division tensor only once but use it twice. According to the formula the altering term in the formula goes as 0,2,4,...,d_model/2.
         </p>
 
         <pre>
             <code class="language-python">
-div_term = 10000**(torch.arange(0, ndim, 2)/ndim)
+div_term = 10000**(torch.arange(0, d_model, 2)/d_model)
             </code>
         </pre>
 
@@ -611,7 +611,7 @@ div_term = 10000**(torch.arange(0, ndim, 2)/ndim)
 
         <pre>
             <code class="language-python">
-pe = torch.zeros(context_length, ndim)
+pe = torch.zeros(context_length, d_model)
 pe[:, ::2] = torch.sin(pos * div_term)
 pe[:, 1::2] = torch.cos(pos * div_term)
             </code>
@@ -625,11 +625,11 @@ pe[:, 1::2] = torch.cos(pos * div_term)
             <code class="language-python">
 class PositionalEncoding(nn.Module):
   "Implement the PE function."
-  def __init__(self, context_length, ndim):
+  def __init__(self, context_length, d_model):
     super().__init__()
-    pos_encoding = torch.zeros(context_length, ndim)
+    pos_encoding = torch.zeros(context_length, d_model)
     pos = torch.arange(context_length).unsqueeze(-1)
-    div_term = 1/10000**(torch.arange(0, ndim, 2)/ndim)
+    div_term = 1/10000**(torch.arange(0, d_model, 2)/d_model)
     pos_encoding[:, ::2] = torch.sin(pos * div_term)
     pos_encoding[:, 1::2] = torch.cos(pos * div_term)
     self.register_buffer('pos_encoding', pos_encoding)
@@ -641,22 +641,24 @@ class PositionalEncoding(nn.Module):
         </pre>
 
         <p>
-            The positional encoding is added to the token embedding in the transformer. That is also why we added the input `x` to `self.pos_encoding` in the `forward` function.
+            The positional encoding is added to the token embedding in the transformer. That is also why we added the input <code class="inline-code">x</code> to <code class="inline-code">self.pos_encoding</code> in the <code class="inline-code">forward</code> function.
         </p>
 
-##### Batches, broadcasting, in_features, out_features
+        <h4>
+            Batches, broadcasting, in_features, out_features
+        </h4>
 
         <p>
-So far our language model module looks like the following:
+            So far our language model module looks like the following:
         </p>
 
         <pre>
             <code class="language-python">
 class LanguageModel(nn.Module):
-  def __init__(self, vocab_size, ndim, context_length) -> None:
+  def __init__(self, vocab_size, d_model, context_length) -> None:
     super().__init__()
-    self.token_embedding = nn.Embedding(vocab_size, ndim)
-    self.positional_encoding = PositionalEncoding(context_length, ndim)
+    self.token_embedding = nn.Embedding(vocab_size, d_model)
+    self.positional_encoding = PositionalEncoding(context_length, d_model)
     # N decoders
     # a layer norm
     # a feedforward 
@@ -680,23 +682,18 @@ class LanguageModel(nn.Module):
         </ul>
 
         <p>
-The input to the language model is one batch of training data, basically what `Corpus.get_batch()` returns for us. If you remember we break the corpus of text data into `context_length` tokens, encoded them into numbers and stacked them into many rows. So that means `x` would have shape of `(batch_size, context_length)`.
+The input to the language model is one batch of training data, basically what <code class="inline-code">Corpus.get_batch()</code> returns for us. If you remember we break the corpus of text data into <code class="inline-code">context_length</code> tokens, encoded them into numbers and stacked them into many rows. So that means <code class="inline-code">x</code> would have shape of `(batch_size, context_length)`.
         </p>
 
         <p>
-Later when we call `x = self.token_embedding(x)` our input is extended into further depth because we convert every token into embedding vector. Therefore at this point `x` would have shape of `(batch_size, context_length, ndim)`. So our tensor is already 3 dimensions deep.
+Later when we call `x = self.token_embedding(x)` our input is extended into further depth because we convert every token into embedding vector. Therefore at this point <code class="inline-code">x</code> would have shape of `(batch_size, context_length, d_model)`. So our tensor is already 3 dimensions deep.
         </p>
 
-        <p>
-In the coming sections, in the multi-head attention and the likes you would introduce neural network connection through `nn.Linear` 
-        </p>
-
-**I ll come back to this**
         <h4>
             Masked multi-head attention
         </h4>
         <p>
-So far we have token embeddings that contain representation of individual tokens and positional encodings that encode position of each token in the given input. However, we would need to map the context of each token according to the given input. In the past in RNNs this was mapped in the hidden layers of the recurrence. In the transformer architecture this is handled in the attention mechanism.
+So far we have token embeddings that contain representation of individual tokens and positional encodings that encode position of each token in the given input. However, we would need to map the context of each token according to the given input. In RNNs this was mapped in the hidden layers of the recurrence. In the transformer architecture this is handled in the attention mechanism.
         </p>
 
         <p>
@@ -704,7 +701,7 @@ For instance, consider an input that goes like:
         </p>
 
         <p class="highlighted">
-He went to park his vehicle at the north of the national park.
+            He went to park his vehicle at the north of the national park.
         </p>
 
         <p>
@@ -719,9 +716,9 @@ This relationship and improved embedding of the different tokens of the given in
 The intuition and application of the attention mechanism in the transformer architecture is a bit difficult to grasp and it wasn't also something that you can easily get just by reading the paper. Let's see for instance one paragraph from the paper:
         </p>
 
-        <p>
-> An attention function can be described as mapping a query and a set of key-value pairs to an output, where the query, keys, values, and output are all vectors. The output is computed as a weighted sum of the values, where the weight assigned to each value is computed by a compatibility function of the query with the corresponding key.
-        </p>
+        <blockquote>
+An attention function can be described as mapping a query and a set of key-value pairs to an output, where the query, keys, values, and output are all vectors. The output is computed as a weighted sum of the values, where the weight assigned to each value is computed by a compatibility function of the query with the corresponding key.
+        </blockquote>
 
         <p>
 There is a lot of questions to ask here:
@@ -733,34 +730,49 @@ There is a lot of questions to ask here:
 
         </ol>
 
-==
-So far the input to the first of the n decoders would be the sum of token embeddings to positional encoding. 
-
         <p>
-            The query, key and value are all vectors of tokens. Both the query and key will be transformed into the same projection. Therefore they are multiplied by a respective weight matrix like \(W_q\), \(W_k\). Those are what the backpropagation actually updates. Those are part of the trainable parameters for the transformer architecture. A simple matrix multiplication like that can easily be achieved by using PyTorch's `nn.Linear`
+            Before trying to answer those questions, it would be nice to come up with the intuition of self attention ourselves. At the end we are interested in a certain value that represents the general context. If we take the above sentence again:
+        </p>
+
+        <p class="highlighted">
+            He went to park his vehicle at the north of the national park.
         </p>
 
         <p>
-            One thing that confused me when working with `nn.Linear` was that there is a shape mismatch. how, you may ask. As we said the input as query are just the token embeddings. Considering the batch and the context length - we would have a 3-dimensional tensor with a shape of `(batch_size, context_length, ndim)`. However, according to the documentation `nn.Linear` would create a `weight` tensor with a shape of `(in_features, out_features)` - so, a 2 dimensional tensor. Simply, what happens is that this tensor would be broadcast across all batches across the outer dimension. 
+            As in most search based systems, we would need to do a look-up from one token to all the others. The word "He" against "He", "went", "to" and so on. Then we also do the same for "went". Then finally whenever we have something that defines the similarity between them, we can derive a value of context again by combining this similarity measure with the list of tokens too. This is roughly what is being done on the self attention mechanism - an inspiration from retrieval systems. Using a query to look up a list of keys and returning values based on some weights assigned to each in the set.
         </p>
 
+        <p>
+            At the first point of the decoder layer, every token in that sentence would be represented by the sum of token embeddings and positional encodings. So, the query, key and value would be vectors for each token and then when are stacked for all tokens we would have matrices represented as \(Q\), \(K\), \(V\). Dot product is used as a similarity measure between \(Q\) and the transpose of \(K\).
+        </p>
+
+        <p>
+            However, we shouldn't also forget the weight matrices. The matrices we saw so far aren't really learnable through the backpropagation algorithm. The ones that are learnable are the weight matrices. \(Q\), \(K\) and \(V\) all have to be projected into similar projections. Because of that each of them are multiplied first by their respective weight matrices, \(W_q\), \(W_k\) and \(W_v\).
+        </p>
+        
+        <p>
+            In PyTorch <code class="inline-code">torch.nn.Linear</code> can be used as a layer to apply linear transformation on a tensor. That means it has a bias term \(b\) that we don't need in the transformation of the attention tensors. The formula used in <code class="inline-code">torch.nn.Linear</code> is like:
+        </p>
+
+        $$y = xA^T + b$$
+
+        <p>Therefore in the transformations we would set <code class="inline-code">bias=False</code></p>
+
+        <p>
+            One thing that confused me when working with `nn.Linear` was that there is a shape mismatch. how, you may ask. As we said the input as query are just the token embeddings. Considering the batch and the context length - we would have a 3-dimensional tensor with a shape of `(batch_size, context_length, d_model)`. However, according to the documentation `nn.Linear` would create a `weight` tensor with a shape of `(in_features, out_features)` - so, a 2 dimensional tensor. Simply, what happens is that this tensor would be broadcast across all batches across the outer dimension. 
+        </p>
 
         <p>
             You have to realize that `nn.Linear` is a generic implementation and it should be able to apply it to any number of batches and also context length. So what is important is the number of in_features that would be transformed through matrix multiplication to out_features. (If you want to think in a 2d matrix the sideways data is what matters when it comes to the input)
         </p>
 
-        <p>
-            ==
-            In this case we only want to multiply weight matrices to query, key and value - so we have to ignore the bias term in `nn.Linear`. It would look like:
-        </p>
-        <pre>
-            <code class="language-python">
-self.query_proj = nn.Linear(ndim, ndim)
+        <code class="language-python">
+self.query_proj = nn.Linear(d_model, d_model)
             </code>
         </pre>
 
         <p>
-            currently, ndim is directly transformed to ndim. However, let's see what the transformer paper says:
+            currently, d_model is directly transformed to d_model. However, let's see what the transformer paper says:
         </p>
 
         <blockquote>
@@ -768,11 +780,11 @@ self.query_proj = nn.Linear(ndim, ndim)
         </blockquote>
 
         <p>
-            So, the \(h\) above indicates the number of heads. These are all performed in parallel. Several attention heads acting in parallel to draw context and later they are concatenated together to form \(d_{model}\) features. (\(d_{model}\) is what we are calling `ndim` here)
+            So, the \(h\) above indicates the number of heads. These are all performed in parallel. Several attention heads acting in parallel to draw context and later they are concatenated together to form \(d_{model}\) features. (\(d_{model}\) is what we are calling `d_model` here)
         </p>
 
         <p>
-            (**a figure here would be great to be honest.. doesn't need to be a bunch of cubes.. just a bunch of rectangles... one big rectangle to indicate the batches... inner rectangle to indicate a sample - token1, token2, ... token_{context_length} kind of and columns of 1, 2 ... ndim - and another rectangle on the side of the weight matrix that will be broadcast over all the batch**)
+            (**a figure here would be great to be honest.. doesn't need to be a bunch of cubes.. just a bunch of rectangles... one big rectangle to indicate the batches... inner rectangle to indicate a sample - token1, token2, ... token_{context_length} kind of and columns of 1, 2 ... d_model - and another rectangle on the side of the weight matrix that will be broadcast over all the batch**)
         </p>
 
         <p>
@@ -784,10 +796,10 @@ self.query_proj = nn.Linear(ndim, ndim)
 class AttentionHead(nn.Module):
   def __init__(self, nheads) -> None:
     super().__init__()
-    head_dim = ndim // nheads
-    self.query_proj = nn.Linear(ndim, head_dim, bias=False)
-    self.key_proj = nn.Linear(ndim, head_dim, bias=False)
-    self.value_proj = nn.Linear(ndim, head_dim, bias=False)
+    head_dim = d_model // nheads
+    self.query_proj = nn.Linear(d_model, head_dim, bias=False)
+    self.key_proj = nn.Linear(d_model, head_dim, bias=False)
+    self.value_proj = nn.Linear(d_model, head_dim, bias=False)
     self.final_proj = nn.Linear(head_dim, head_dim, bias=False)
 
   def forward(self, x):
@@ -854,10 +866,10 @@ out = self.final_proj(r)
 class AttentionHead(nn.Module):
     def __init__(self, nheads) -> None:
         super().__init__()
-        head_dim = ndim // nheads
-        self.query_proj = nn.Linear(ndim, head_dim, bias=False)
-        self.key_proj = nn.Linear(ndim, head_dim, bias=False)
-        self.value_proj = nn.Linear(ndim, head_dim, bias=False)
+        head_dim = d_model // nheads
+        self.query_proj = nn.Linear(d_model, head_dim, bias=False)
+        self.key_proj = nn.Linear(d_model, head_dim, bias=False)
+        self.value_proj = nn.Linear(d_model, head_dim, bias=False)
         self.final_proj = nn.Linear(head_dim, head_dim, bias=False)
         self.register_buffer('tril', torch.tril(torch.ones(context_length, context_length)))
 
@@ -913,9 +925,9 @@ $$FFN(x) = max(0, xW_1 + b_1)W_2 + b_2$$
 
         <pre>
             <code class="language-python">
-self.linear1 = nn.Linear(ndim, ndim * 4)
+self.linear1 = nn.Linear(d_model, d_model * 4)
 self.relu = nn.ReLU()
-self.linear2 = nn.Linear(ndim * 4, ndim)
+self.linear2 = nn.Linear(d_model * 4, d_model)
             </code>
         </pre>
 
@@ -929,9 +941,9 @@ class FeedForward(nn.Module):
     def __init__(self) -> None:
         super().__init__()
         self.ffwd = nn.Sequential(
-            nn.Linear(ndim, ndim * 4),
+            nn.Linear(d_model, d_model * 4),
             nn.ReLU(),
-            nn.Linear(ndim * 4, ndim)
+            nn.Linear(d_model * 4, d_model)
         )
 
     def forward(self, x):
@@ -954,7 +966,7 @@ class Decoder(nn.Module):
     def __init__(self) -> None:
         super().__init__()
         self.masked_attention = MaskedMultiHeadAttention(nheads)
-        self.layernorm = nn.LayerNorm(ndim)
+        self.layernorm = nn.LayerNorm(d_model)
 
     def forward(self, x):
         x = x + self.masked_attention(x)
@@ -1008,12 +1020,12 @@ self.decoders = nn.Sequential(*[Decoder() for _ in range(ndecoders)])
         </p>
 
         <p>
-            What should the final linear transformation map towards? ultimately, we want to predict the probability of each token in the dictionary as a way of continuing the given prompt. Currently, the dimensionality reached is `ndim`. However, for the final layer, we would transform that to `vocab_size`.  Something like:
+            What should the final linear transformation map towards? ultimately, we want to predict the probability of each token in the dictionary as a way of continuing the given prompt. Currently, the dimensionality reached is `d_model`. However, for the final layer, we would transform that to `vocab_size`.  Something like:
         </p>
 
         <pre>
             <code class="language-python">
-self.final_proj = nn.Linear(ndim, vocab_size)
+self.final_proj = nn.Linear(d_model, vocab_size)
             </code>
         </pre>
 
@@ -1037,12 +1049,12 @@ Obtaining log-probabilities in a neural network is easily achieved by adding a 
 class LanguageModel(nn.Module):
     def __init__(self) -> None:
         super().__init__()
-        self.token_embedding = nn.Embedding(vocab_size, ndim)
+        self.token_embedding = nn.Embedding(vocab_size, d_model)
         self.positional_encoding = PositionalEncoding()
         self.decoders = nn.Sequential(*[Decoder() for _ in range(ndecoders)])
         self.ffwd = FeedForward()
-        self.layernorm = nn.LayerNorm(ndim)
-        self.proj = nn.Linear(ndim, vocab_size)
+        self.layernorm = nn.LayerNorm(d_model)
+        self.proj = nn.Linear(d_model, vocab_size)
         self.dropout1 = nn.Dropout(p=pdrop)
         self.dropout2 = nn.Dropout(p=pdrop)
 
